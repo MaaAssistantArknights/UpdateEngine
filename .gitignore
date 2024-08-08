@@ -1,0 +1,5 @@
+/output
+/testdata
+/cache
+.vs
+__pycache__
