@@ -1,121 +1,121 @@
 # usage: aria2c -i testdata.aria2
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.2-alpha.1.d104.g2428a4610/MAA-v5.4.2-alpha.1.d104.g2428a4610-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.2-alpha.1.d104.g2428a4610-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.2-alpha.1.d094.gd52b1e13e/MAA-v5.4.2-alpha.1.d094.gd52b1e13e-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.2-alpha.1.d094.gd52b1e13e-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.1/MAA-v5.4.1-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.1-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.1-alpha.1.d090.g73458d38c/MAA-v5.4.1-alpha.1.d090.g73458d38c-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.1-alpha.1.d090.g73458d38c-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.1-alpha.1.d070.gcef579741/MAA-v5.4.1-alpha.1.d070.gcef579741-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.1-alpha.1.d070.gcef579741-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.1-alpha.1.d068.g970e45209/MAA-v5.4.1-alpha.1.d068.g970e45209-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.1-alpha.1.d068.g970e45209-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.1-alpha.1.d064.g8b90bd796/MAA-v5.4.1-alpha.1.d064.g8b90bd796-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.1-alpha.1.d064.g8b90bd796-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.1-alpha.1.d049.g4473a45e6/MAA-v5.4.1-alpha.1.d049.g4473a45e6-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.1-alpha.1.d049.g4473a45e6-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.1-alpha.1.d042.g1b8911f55/MAA-v5.4.1-alpha.1.d042.g1b8911f55-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.1-alpha.1.d042.g1b8911f55-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.1-alpha.1.d022.ga340d515a/MAA-v5.4.1-alpha.1.d022.ga340d515a-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.1-alpha.1.d022.ga340d515a-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0/MAA-v5.4.0-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.2.d032.gbc14fcb0d/MAA-v5.4.0-beta.2.d032.gbc14fcb0d-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.2.d032.gbc14fcb0d-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.2.d025.gfa7f04c55/MAA-v5.4.0-beta.2.d025.gfa7f04c55-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.2.d025.gfa7f04c55-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.2.d017.g8bfb223da/MAA-v5.4.0-beta.2.d017.g8bfb223da-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.2.d017.g8bfb223da-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.2.d007.ga36c8f764/MAA-v5.4.0-beta.2.d007.ga36c8f764-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.2.d007.ga36c8f764-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.2/MAA-v5.4.0-beta.2-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.2-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.1.d037.g98ecb301b/MAA-v5.4.0-beta.1.d037.g98ecb301b-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.1.d037.g98ecb301b-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.1.d035.gd2e5001e7/MAA-v5.4.0-beta.1.d035.gd2e5001e7-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.1.d035.gd2e5001e7-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.1.d020.g90d3c140f/MAA-v5.4.0-beta.1.d020.g90d3c140f-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.1.d020.g90d3c140f-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.1.d018.g4f1ef65a9/MAA-v5.4.0-beta.1.d018.g4f1ef65a9-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.1.d018.g4f1ef65a9-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.1.d009.g7c58f1d49/MAA-v5.4.0-beta.1.d009.g7c58f1d49-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.1.d009.g7c58f1d49-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.4.0-beta.1/MAA-v5.4.0-beta.1-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.4.0-beta.1-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.3.2-alpha.1.d049.g8cc7fe3e3/MAA-v5.3.2-alpha.1.d049.g8cc7fe3e3-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.3.2-alpha.1.d049.g8cc7fe3e3-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.3.2-alpha.1.d038.gf9a216ed2/MAA-v5.3.2-alpha.1.d038.gf9a216ed2-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.3.2-alpha.1.d038.gf9a216ed2-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.3.2-alpha.1.d033.gf89d71d5c/MAA-v5.3.2-alpha.1.d033.gf89d71d5c-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.3.2-alpha.1.d033.gf89d71d5c-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.3.2-alpha.1.d029.g442c4218d/MAA-v5.3.2-alpha.1.d029.g442c4218d-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.3.2-alpha.1.d029.g442c4218d-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.3.2-alpha.1.d028.g42e4e0223/MAA-v5.3.2-alpha.1.d028.g42e4e0223-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.3.2-alpha.1.d028.g42e4e0223-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.3.2-alpha.1.d022.g23e60d386/MAA-v5.3.2-alpha.1.d022.g23e60d386-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.3.2-alpha.1.d022.g23e60d386-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.3.2-alpha.1.d019.g1bf5a67c8/MAA-v5.3.2-alpha.1.d019.g1bf5a67c8-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.3.2-alpha.1.d019.g1bf5a67c8-win-x64.zip
 https://github.com/MaaAssistantArknights/MaaRelease/releases/download/v5.3.2-alpha.1.d013.g1652647f1/MAA-v5.3.2-alpha.1.d013.g1652647f1-win-x64.zip
   conditional-get=true
-  dir=versions
+  dir=testdata
   out=MAA-v5.3.2-alpha.1.d013.g1652647f1-win-x64.zip

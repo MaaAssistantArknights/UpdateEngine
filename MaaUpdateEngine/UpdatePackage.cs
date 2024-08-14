@@ -1,26 +1,16 @@
-﻿using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Formats.Tar;
-using System.IO.Compression;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
+
+
 
 namespace MaaUpdateEngine
 {
-    internal class UpdatePackage
+    using static UpdateDataCommon;
+
+    public record class UpdatePackage : IDisposable
     {
-        enum CompressionType
-        {
-            Gzip,
-            Zstandard
-        }
         private const int FirstSegmentSize = 65536;
 
         private const int MagicGzipLength = 29;
@@ -29,18 +19,69 @@ namespace MaaUpdateEngine
         private static ReadOnlySpan<byte> MagicGzipEnd => [0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         private static ReadOnlySpan<byte> MagicZstd => [0x5a, 0x2a, 0x4d, 0x18, 0x08, 0x00, 0x00, 0x00, 0x4d, 0x55, 0x45, 0x31];
 
-        private static readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        };
+        public FileStream FileStream { get; }
+        private bool leaveOpen;
+        public PackageManifest Manifest { get; }
 
-        private static (CompressionType, int headerLength, int manifestLength) ParsePackageHeader(ReadOnlySpan<byte> header)
+        internal DeltaPackageManifest PackageIndex { get; }
+
+        internal long ChunksOffset { get; }
+
+        internal PackageCompressionType CompressionType { get; }
+
+        internal UpdatePackage(FileStream fileStream, PackageManifest manifest, DeltaPackageManifest packageIndex, long chunksOffset, PackageCompressionType compressionType, bool leaveOpen = true)
+        {
+            FileStream = fileStream;
+            Manifest = manifest;
+            PackageIndex = packageIndex;
+            ChunksOffset = chunksOffset;
+            CompressionType = compressionType;
+            this.leaveOpen = leaveOpen;
+        }
+
+        public static async Task<UpdatePackage> OpenAsync(string path, CancellationToken ct)
+        {
+            var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            var file = new LocalRandomAccessFile(fileStream);
+            return await InternalLoadPackageAsync(file, null, null, ct);
+        }
+
+        public static async Task<UpdatePackage> CacheAndOpenAsync(IRandomAccessFile file, PackageManifest currentPackage, string cachePath, CancellationToken ct)
+        {
+            return await InternalLoadPackageAsync(file, cachePath, currentPackage, ct);
+        }
+
+        public void Close()
+        {
+            if (!leaveOpen)
+            {
+                FileStream.Close();
+            }
+        }
+
+        public void Dispose()
+        {
+            Close();
+            GC.SuppressFinalize(this);
+        }
+
+        ~UpdatePackage()
+        {
+            Dispose();
+        }
+
+        internal Stream OpenChunk(Chunk chunk)
+        {
+            return new RandomAccessSubStream(FileStream.SafeFileHandle, chunk.Offset + ChunksOffset, chunk.Size, false);
+        }
+
+        private static (PackageCompressionType, int headerLength, int manifestLength) ParsePackageHeader(ReadOnlySpan<byte> header)
         {
             if (header.Length >= MagicGzipLength && header.StartsWith(MagicGzipBegin) && header[..MagicGzipLength].EndsWith(MagicGzipEnd))
             {
                 var lengthHex = header.Slice(MagicGzipBegin.Length, 8);
                 var length = Convert.ToInt32(Encoding.ASCII.GetString(lengthHex), 16);
-                return (CompressionType.Gzip, MagicGzipLength, length);
+                return (PackageCompressionType.Gzip, MagicGzipLength, length);
             }
             if (header.Slice(0, 12).SequenceEqual(MagicZstd))
             {
@@ -50,122 +91,84 @@ namespace MaaUpdateEngine
                 {
                     length = BinaryPrimitives.ReverseEndianness(length);
                 }
-                return (CompressionType.Zstandard, MagicZstdLength, length);
+                return (PackageCompressionType.Zstandard, MagicZstdLength, length);
             }
             throw new InvalidOperationException("Invalid header");
         }
 
-        private static bool IsPackageManifestEntry([NotNullWhen(true)] TarEntry? entry)
+        private static async Task<UpdatePackage> InternalLoadPackageAsync(IRandomAccessFile file, string? cachePackagePath, PackageManifest? referencePackageManifest, CancellationToken ct)
         {
-            return entry != null &&
-                   entry.EntryType == TarEntryType.RegularFile &&
-                   entry.Name.StartsWith(".maa_update/packages/", StringComparison.Ordinal) &&
-                   entry.Name.EndsWith("/manifest.json", StringComparison.Ordinal);
-        }
-
-        private static bool IsDeltaPackageManifestEntry([NotNullWhen(true)] TarEntry? entry)
-        {
-            return entry != null &&
-                   entry.EntryType == TarEntryType.RegularFile &&
-                   entry.Name.StartsWith(".maa_update/delta/", StringComparison.Ordinal) &&
-                   entry.Name.EndsWith("/manifest.json", StringComparison.Ordinal);
-        }
-
-        private static bool IsChunkManifestEntry([NotNullWhen(true)] TarEntry? entry)
-        {
-            return entry != null &&
-                   entry.EntryType == TarEntryType.RegularFile &&
-                   entry.Name.StartsWith(".maa_update/delta/", StringComparison.Ordinal) &&
-                   entry.Name.EndsWith("/chunk_manifest.json", StringComparison.Ordinal);
-        }
-
-        private static Stream GetDecompressor(CompressionType compressionType, Stream stream)
-        {
-            ArgumentNullException.ThrowIfNull(stream);
-            return compressionType switch
+            if (cachePackagePath != null && referencePackageManifest == null)
             {
-                CompressionType.Gzip => new GZipStream(stream, CompressionMode.Decompress, leaveOpen: true),
-                CompressionType.Zstandard => new ZstdSharp.DecompressionStream(stream, leaveOpen: true),
-                _ => throw new InvalidOperationException("Invalid compression type")
-            };
-        }
-
-        private static (HashAlgorithm, byte[]) ParseHashString(string hashStr)
-        {
-            if (hashStr.StartsWith("sha256:"))
-            {
-                var hasher = SHA256.Create();
-                var hash = Convert.FromHexString(hashStr[7..]);
-                if (hash.Length != hasher.HashSize / 8)
-                {
-                    throw new InvalidOperationException("Invalid hash length");
-                }
-                return (hasher, hash);
+                throw new ArgumentNullException(nameof(referencePackageManifest));
             }
-            throw new NotSupportedException();
-        }
+            var create_cache = cachePackagePath != null;
 
-        public static async Task ApplyPackage(IRandomAccessFile file, PackageManifest currentPackage, CancellationToken ct)
-        {
             var buf = ArrayPool<byte>.Shared.Rent(FirstSegmentSize);
-            var len = await file.ReadAtAsync(0, buf, ct);
-            var valid_buf = buf.AsMemory(0, len);
 
-            var (comp, header_len, manifest_len) = ParsePackageHeader(valid_buf.Span);
+            var peek_len = await file.ReadAtAsync(0, buf.AsMemory(0, FirstSegmentSize), ct);
+            var peek_buf = buf.AsMemory(0, peek_len);
 
-            var sans_header = valid_buf.Slice(header_len);
+            var (comp, header_len, manifest_len) = ParsePackageHeader(peek_buf.Span);
+
+            var sans_header = peek_buf.Slice(header_len);
 
             if (sans_header.Length < manifest_len)
             {
-                // TODO: read more data
-                throw new InvalidOperationException("Invalid header");
+                // read more data
+                if (buf.Length < header_len + manifest_len)
+                {
+                    // realloc buffer
+                    var buf2 = ArrayPool<byte>.Shared.Rent(header_len + manifest_len);
+                    Array.Copy(buf, buf2, peek_len);
+                    ArrayPool<byte>.Shared.Return(buf);
+                    buf = buf2;
+                }
+                var extra_len = await file.ReadAtAsync(peek_len, buf.AsMemory()[peek_len..(header_len + manifest_len)], ct);
+                if (peek_len + extra_len >= header_len + manifest_len)
+                {
+                    peek_len += extra_len;
+                    sans_header = buf.AsMemory(header_len, manifest_len);
+                    peek_buf = buf.AsMemory(0, peek_len);
+                }
+                else
+                {
+                    throw new InvalidDataException("Invalid package header");
+                }
             }
 
             var manifest_chunk = sans_header.Slice(0, manifest_len);
-            var tr = new TarReader(GetDecompressor(comp, new ModernMemoryStream(manifest_chunk)));
+            var tr = new TarReader(OpenDecompressionStream(comp, new ModernMemoryStream(manifest_chunk)));
             var entry = tr.GetNextEntry();
             if (!IsPackageManifestEntry(entry))
             {
                 throw new InvalidDataException("Invalid manifest chunk");
             }
 
-            static T? DeserializeFromEntry<T>(TarEntry entry)
+            var package_manifest = DeserializeFromEntry<PackageManifest>(entry) ?? throw new InvalidDataException("Invalid package manifest");
+
+            if (referencePackageManifest != null)
             {
-                var stream = entry.DataStream;
-                if (stream == null)
+                if (package_manifest.Name != referencePackageManifest.Name)
                 {
-                    throw new InvalidDataException("Invalid manifest chunk");
+                    throw new InvalidDataException("package name mismatch");
                 }
-                return JsonSerializer.Deserialize<T>(stream, jsonOptions);
-            }
 
-            var package_manifest = DeserializeFromEntry<PackageManifest>(entry);
+                if (package_manifest.Variant != referencePackageManifest.Variant)
+                {
+                    throw new InvalidDataException("package variant mismatch");
+                }
 
-            if (package_manifest == null)
-            {
-                throw new InvalidDataException("Invalid package manifest");
-            }
-
-            if (package_manifest.Name != currentPackage.Name)
-            {
-                throw new InvalidDataException("package name mismatch");
-            }
-
-            if (package_manifest.Variant != currentPackage.Variant)
-            {
-                throw new InvalidDataException("package variant mismatch");
-            }
-
-            if (package_manifest.Version == currentPackage.Version)
-            {
-                //throw new InvalidDataException("package version mismatch");
-                return;
+                // if (package_manifest.Version == validatePackageManifest.Version)
+                // {
+                //     throw new InvalidDataException("no need to udpate");
+                // }
             }
 
             entry = tr.GetNextEntry();
             if (entry == null)
             {
-                // TODO: not delta package
+                // TODO: no index - full package
                 throw new NotImplementedException();
             }
             if (!IsDeltaPackageManifestEntry(entry))
@@ -179,112 +182,39 @@ namespace MaaUpdateEngine
                 throw new InvalidDataException("Invalid delta package manifest");
             }
 
-            var apply_chunks = delta_manifest.Chunks.Where(c => c.Target.EnumerateArray().Select(x=>x.GetString()).Contains(currentPackage.Version)).ToArray();
-
+            ArrayPool<byte>.Shared.Return(buf);
 
             var chunks_offset = header_len + manifest_len;
-            // TODO: apply chunks
 
-            // maximum position relative to the first chunk
-            var maxpos = apply_chunks.Select(c => c.Offset + c.Size).Max();
-
-            using var cache_file = File.OpenWrite($"cache/{currentPackage.Name}_{currentPackage.Version}.tmp");
-            var fd = cache_file.SafeFileHandle;
-
-            await file.CopyToAsync(chunks_offset, maxpos, cache_file, ct);
-
-            var chunk_streams = apply_chunks.Select(c => new RandomAccessSubStream(fd, c.Offset, c.Size, false)).ToArray();
-
-            var patch_files = new Dictionary<string, List<(string fromVersion, PatchFile patchFile)>>();
-            
-
-            for (var i = apply_chunks.Length - 1; i >= 0; i--)
+            FileStream fs;
+            if (create_cache)
             {
-                var chunk_meta = apply_chunks[i];
-                var chunk_stream = chunk_streams[i];
+                var apply_chunks = delta_manifest.Chunks.Where(c => c.GetTargetVersions().Contains(referencePackageManifest!.Version)).ToArray();
+                // maximum position relative to the first chunk
+                var last_chunk_end = chunks_offset + apply_chunks.Select(c => c.Offset + c.Size).Max();
 
-                var (hasher, expect_hash) = ParseHashString(chunk_meta.Hash);
-
-                var actual_hash = hasher.ComputeHash(new RandomAccessSubStream(fd, chunk_meta.Offset, chunk_meta.Size, false));
-
-                if (!actual_hash.SequenceEqual(expect_hash))
+                fs = File.Open(cachePackagePath!, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+                fs.SetLength(0);
+                // avoid duplicate read from source file
+                await fs.WriteAsync(peek_buf, ct);
+                if (last_chunk_end > peek_buf.Length)
                 {
-                    throw new InvalidDataException("Invalid chunk hash");
+                    // read the rest of the file
+                    await file.CopyToAsync(peek_len, last_chunk_end - peek_buf.Length, fs, ct);
                 }
-
-                chunk_stream.Position = 0;
-
-                var tf = new TarReader(chunk_stream, true);
-                var chunk_manifest_entry = tf.GetNextEntry();
-                if (!IsChunkManifestEntry(chunk_manifest_entry))
-                {
-                    throw new InvalidDataException("Invalid chunk manifest");
-                }
-
-                var chunk_manifest = DeserializeFromEntry<ChunkManifest>(chunk_manifest_entry);
-
-                if (chunk_manifest == null)
-                {
-                    throw new InvalidDataException("Invalid chunk manifest");
-                }
-
-                // process removed files
-                foreach (var rf in chunk_manifest.RemoveFiles ?? Array.Empty<string>())
-                {
-                    // TODO: safe file operation
-                    File.Delete(rf);
-                }
-
-                // process patch files
-                var patch_data_names_set = new HashSet<string>();
-                foreach (var pf in chunk_manifest.PatchFiles ?? Array.Empty<PatchFile>())
-                {
-                    patch_data_names_set.Add(pf.Patch);
-                    if (chunk_manifest.PatchBase == currentPackage.Version)
-                    {
-                        // initialize patch list
-                        var list = new List<(string, PatchFile)>();
-                        patch_files[pf.File] = list;
-                        list.Add((currentPackage.Version, pf));
-                    }
-                    else
-                    {
-                        if (patch_files.TryGetValue(pf.File, out var list))
-                        {
-                            // append patch list if available
-                            if (list[^1].patchFile.NewVersion == chunk_manifest.PatchBase)
-                            {
-                                list.Add((chunk_manifest.PatchBase, pf));
-                            }
-                        }
-                    }
-                }
-
-                // process replaced files
-                TarEntry? file_entry;
-                while ((file_entry = tf.GetNextEntry()) != null)
-                {
-                    // skip extracting patch files
-                    if (patch_data_names_set.Contains(file_entry.Name))
-                    {
-                        continue;
-                    }
-                    if (file_entry.EntryType == TarEntryType.RegularFile)
-                    {
-                        // TODO: safe file operation
-                        var file_path = file_entry.Name;
-                        await file_entry.ExtractToFileAsync(file_path, true, ct);
-                    }
-                }
+                fs.Position = 0;
             }
-
-            // TODO: apply patch series
-            foreach (var (file_to_patch, patch_series) in patch_files)
+            else if (file is LocalRandomAccessFile lrf)
+            {
+                fs = lrf.FileStream;
+            }
+            else
             {
                 throw new NotImplementedException();
-
             }
 
+            return new UpdatePackage(fs, package_manifest, delta_manifest, chunks_offset, comp);
         }
+
     }
 }

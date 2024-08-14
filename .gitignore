@@ -3,3 +3,4 @@
 /cache
 .vs
 __pycache__
+/test

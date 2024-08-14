@@ -50,6 +50,12 @@ class RandomAccessSubStream : Stream
 
     public override int Read(Span<byte> buffer)
     {
+        var available = Length - Position;
+        if (available == 0)
+        {
+            return 0;
+        }
+        buffer = buffer.Slice(0, (int)Math.Min(buffer.Length, available));
         var len = RandomAccess.Read(_fd, buffer, _fd_offset + _position);
         _position += len;
         return len;
@@ -62,6 +68,12 @@ class RandomAccessSubStream : Stream
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
+        var available = Length - Position;
+        if (available == 0)
+        {
+            return 0;
+        }
+        buffer = buffer.Slice(0, (int)Math.Min(buffer.Length, available));
         var len = await RandomAccess.ReadAsync(_fd, buffer, _fd_offset + _position, cancellationToken);
         _position += len;
         return len;

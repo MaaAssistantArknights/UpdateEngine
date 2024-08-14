@@ -7,13 +7,13 @@ using System.Threading.Tasks;
 
 namespace MaaUpdateEngine
 {
-    internal interface IRandomAccessFile
+    public interface IRandomAccessFile
     {
         public int ReadAt(long offset, Span<byte> buffer);
         public ValueTask<int> ReadAtAsync(long offset, Memory<byte> buffer) => ReadAtAsync(offset, buffer, CancellationToken.None);
         public ValueTask<int> ReadAtAsync(long offset, Memory<byte> buffer, CancellationToken ct);
         public async Task CopyToAsync(long offset, long length, Stream destination, CancellationToken ct) {
-            var buffer = ArrayPool<byte>.Shared.Rent(262144);
+            var buffer = ArrayPool<byte>.Shared.Rent(80000);
             try {
                 long remaining = length;
                 while (remaining > 0) {

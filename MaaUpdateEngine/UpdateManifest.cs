@@ -1,4 +1,6 @@
-﻿using System;
+﻿#nullable disable
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace MaaUpdateEngine
 {
-    internal class PackageManifest
+    public class PackageManifest
     {
         public string Name { get; set; }
         public string Version { get; set; }
@@ -27,6 +29,15 @@ namespace MaaUpdateEngine
         public long Offset { get; set; }
         public long Size { get; set; }
         public string Hash { get; set; }
+
+        public string[] GetTargetVersions()
+        {
+            if (Target.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+            return Target.EnumerateArray().Select(e => e.GetString() ?? throw new InvalidDataException()).ToArray();
+        }
     }
 
     internal class PatchFile

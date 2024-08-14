@@ -357,7 +357,8 @@ def generate_file_history(version_order: list[str], packages: typing.Mapping[str
         # set to keep track of changed files between this version and latest version
         changed_entries = set()
 
-        for_version = [version, *processed_versions]
+        for_version = [x for x in previous if x not in processed_versions]
+        assert version in for_version
         actions = []
         # print(f"To update from {version} or older:")
         for entry in current_entries:
@@ -370,9 +371,9 @@ def generate_file_history(version_order: list[str], packages: typing.Mapping[str
                 if need_binary_patch(entry):
                     # check if the file is different from the newer version
                     # case like A -> B -> A is handled later
+                    actions.append(PatchFile(version, entry_name))
                     if entry not in last_changed_entries:
                         changed_entries.add(entry)
-                        actions.append(PatchFile(version, entry_name))
                 else:
                     if entry_name not in global_replaced_names:
                         global_replaced_names.add(entry_name)
