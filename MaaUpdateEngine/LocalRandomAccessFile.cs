@@ -2,7 +2,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace MaaUpdateEngine;
 
-class LocalRandomAccessFile : IRandomAccessFile, IDisposable
+internal class LocalRandomAccessFile : IRandomAccessFile, IDisposable
 {
     public FileStream FileStream { get; }
     private SafeFileHandle fd;

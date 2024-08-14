@@ -7,7 +7,7 @@ using Windows.Win32;
 namespace MaaUpdateEngine
 {
     using static UpdateDataCommon;
-    internal partial class UpdateSession : IDisposable
+    public partial class UpdateSession : IDisposable
     {
         private record struct PatchRecord(string FromVersion, PatchFile PatchFile);
 

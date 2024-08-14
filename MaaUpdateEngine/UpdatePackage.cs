@@ -193,6 +193,13 @@ namespace MaaUpdateEngine
                 // maximum position relative to the first chunk
                 var last_chunk_end = chunks_offset + apply_chunks.Select(c => c.Offset + c.Size).Max();
 
+                var filename = cachePackagePath!;
+                var dir = Path.GetDirectoryName(filename);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
                 fs = File.Open(cachePackagePath!, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
                 fs.SetLength(0);
                 // avoid duplicate read from source file
@@ -210,6 +217,7 @@ namespace MaaUpdateEngine
             }
             else
             {
+                // 你又不让我缓存，又不是本地文件，我怎么办
                 throw new NotImplementedException();
             }
 
