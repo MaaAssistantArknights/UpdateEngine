@@ -447,7 +447,7 @@ def main(package_provider: pkgprov.PackageProvider, package_name: str, package_v
 
     report("")
 
-    file_history = generate_file_history(previous, pkgs)
+    file_history = generate_file_history([latest, *previous], pkgs)
 
     delta_records = file_history.version_changes
     unchanged_names = file_history.unchanged_entries
