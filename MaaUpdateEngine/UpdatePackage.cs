@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 using System.Formats.Tar;
 using System.Text;
 
-
+using MaaUpdateEngine.Streams;
 
 namespace MaaUpdateEngine
 {
@@ -11,6 +11,13 @@ namespace MaaUpdateEngine
 
     public record class UpdatePackage : IDisposable
     {
+        /// <summary>
+        /// Represents the progress of a package transfer.
+        /// </summary>
+        /// <param name="BytesTransferred"></param>
+        /// <param name="TotalBytes">Total bytes to transfer. A negative value indicates that the number total bytes are unknown.</param>
+        public readonly record struct TransferProgress(long BytesTransferred, long TotalBytes);
+
         private const int FirstSegmentSize = 65536;
 
         private const int MagicGzipLength = 29;
@@ -19,7 +26,7 @@ namespace MaaUpdateEngine
         private static ReadOnlySpan<byte> MagicGzipEnd => [0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         private static ReadOnlySpan<byte> MagicZstd => [0x5a, 0x2a, 0x4d, 0x18, 0x08, 0x00, 0x00, 0x00, 0x4d, 0x55, 0x45, 0x31];
 
-        public FileStream FileStream { get; }
+        internal ISubStreamFactory SubStreamFactory { get; }
         private bool leaveOpen;
         public PackageManifest Manifest { get; }
 
@@ -29,9 +36,9 @@ namespace MaaUpdateEngine
 
         internal PackageCompressionType CompressionType { get; }
 
-        internal UpdatePackage(FileStream fileStream, PackageManifest manifest, DeltaPackageManifest packageIndex, long chunksOffset, PackageCompressionType compressionType, bool leaveOpen = true)
+        internal UpdatePackage(ISubStreamFactory fileStream, PackageManifest manifest, DeltaPackageManifest packageIndex, long chunksOffset, PackageCompressionType compressionType, bool leaveOpen = true)
         {
-            FileStream = fileStream;
+            SubStreamFactory = fileStream;
             Manifest = manifest;
             PackageIndex = packageIndex;
             ChunksOffset = chunksOffset;
@@ -43,19 +50,19 @@ namespace MaaUpdateEngine
         {
             var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous | FileOptions.SequentialScan);
             var file = new LocalRandomAccessFile(fileStream);
-            return await InternalLoadPackageAsync(file, null, null, ct);
+            return await InternalLoadPackageAsync(file, null, null, null, ct);
         }
 
-        public static async Task<UpdatePackage> CacheAndOpenAsync(IRandomAccessFile file, PackageManifest currentPackage, string cachePath, CancellationToken ct)
+        public static async Task<UpdatePackage> CacheAndOpenAsync(IRandomAccessFile file, PackageManifest currentPackage, string cachePath, IProgress<TransferProgress>? progress = null, CancellationToken ct = default)
         {
-            return await InternalLoadPackageAsync(file, cachePath, currentPackage, ct);
+            return await InternalLoadPackageAsync(file, cachePath, currentPackage, progress, ct);
         }
 
         public void Close()
         {
             if (!leaveOpen)
             {
-                FileStream.Close();
+                (SubStreamFactory as IDisposable)?.Dispose();
             }
         }
 
@@ -72,7 +79,7 @@ namespace MaaUpdateEngine
 
         internal Stream OpenChunk(Chunk chunk)
         {
-            return new RandomAccessSubStream(FileStream.SafeFileHandle, chunk.Offset + ChunksOffset, chunk.Size, false);
+            return SubStreamFactory.CreateSubStream(chunk.Offset + ChunksOffset, chunk.Size);
         }
 
         private static (PackageCompressionType, int headerLength, int manifestLength) ParsePackageHeader(ReadOnlySpan<byte> header)
@@ -96,17 +103,32 @@ namespace MaaUpdateEngine
             throw new InvalidOperationException("Invalid header");
         }
 
-        private static async Task<UpdatePackage> InternalLoadPackageAsync(IRandomAccessFile file, string? cachePackagePath, PackageManifest? referencePackageManifest, CancellationToken ct)
+        private static async Task<UpdatePackage> InternalLoadPackageAsync(IRandomAccessFile file, string? cachePackagePath, PackageManifest? referencePackageManifest, IProgress<TransferProgress>? progress, CancellationToken ct)
         {
             if (cachePackagePath != null && referencePackageManifest == null)
             {
                 throw new ArgumentNullException(nameof(referencePackageManifest));
             }
-            var create_cache = cachePackagePath != null;
+
+            long xferd = 0, total = -1;
+
+            void report_progress()
+            {
+                progress?.Report(new TransferProgress(xferd, total));
+            }
+
+            var subprogress = new SimpleProgress<long>(delta =>
+            {
+                progress?.Report(new TransferProgress(xferd + delta, total));
+            });
 
             var buf = ArrayPool<byte>.Shared.Rent(FirstSegmentSize);
 
-            var peek_len = await file.ReadAtAsync(0, buf.AsMemory(0, FirstSegmentSize), ct);
+            report_progress();
+            var peek_len = await file.ReadAtAsync(0, buf.AsMemory(0, FirstSegmentSize), subprogress, ct);
+            xferd += peek_len;
+            report_progress();
+
             var peek_buf = buf.AsMemory(0, peek_len);
 
             var (comp, header_len, manifest_len) = ParsePackageHeader(peek_buf.Span);
@@ -124,7 +146,9 @@ namespace MaaUpdateEngine
                     ArrayPool<byte>.Shared.Return(buf);
                     buf = buf2;
                 }
-                var extra_len = await file.ReadAtAsync(peek_len, buf.AsMemory()[peek_len..(header_len + manifest_len)], ct);
+                var extra_len = await file.ReadAtAsync(peek_len, buf.AsMemory()[peek_len..(header_len + manifest_len)], subprogress, ct);
+                xferd += extra_len;
+                report_progress();
                 if (peek_len + extra_len >= header_len + manifest_len)
                 {
                     peek_len += extra_len;
@@ -186,8 +210,12 @@ namespace MaaUpdateEngine
 
             var chunks_offset = header_len + manifest_len;
 
-            FileStream fs;
-            if (create_cache)
+            ISubStreamFactory factory;
+            if (cachePackagePath == null && file is LocalRandomAccessFile lrf)
+            {
+                factory = new RandomAccessSubStreamFactory(lrf.FileStream, false, false);
+            }
+            else
             {
                 var apply_chunks = delta_manifest.Chunks.Where(c => c.GetTargetVersions().Contains(referencePackageManifest!.Version)).ToArray();
                 // maximum position relative to the first chunk
@@ -200,29 +228,46 @@ namespace MaaUpdateEngine
                     Directory.CreateDirectory(dir);
                 }
 
-                fs = File.Open(cachePackagePath!, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
-                fs.SetLength(0);
+                Stream s;
+                if (cachePackagePath != null)
+                {
+                    var fs = File.Open(cachePackagePath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+                    fs.SetLength(0);
+                    factory = new RandomAccessSubStreamFactory(fs, true, true);
+                    s = fs;
+                }
+                else
+                {
+                    var ms = new MemoryStream(checked((int)last_chunk_end));
+                    factory = new MemorySubStreamFactory(ms, true);
+                    s = ms;
+                }
                 // avoid duplicate read from source file
-                await fs.WriteAsync(peek_buf, ct);
+                await s.WriteAsync(peek_buf, ct);
                 if (last_chunk_end > peek_buf.Length)
                 {
+                    total = last_chunk_end;
+                    var remaining = last_chunk_end - peek_buf.Length;
                     // read the rest of the file
-                    await file.CopyToAsync(peek_len, last_chunk_end - peek_buf.Length, fs, ct);
+                    report_progress();
+                    await file.CopyToAsync(peek_len, remaining, s, subprogress, ct);
+                    xferd += remaining;
+                    report_progress();
                 }
-                fs.Position = 0;
-            }
-            else if (file is LocalRandomAccessFile lrf)
-            {
-                fs = lrf.FileStream;
-            }
-            else
-            {
-                // 你又不让我缓存，又不是本地文件，我怎么办
-                throw new NotImplementedException();
+                s.Position = 0;
             }
 
-            return new UpdatePackage(fs, package_manifest, delta_manifest, chunks_offset, comp);
+            return new UpdatePackage(factory, package_manifest, delta_manifest, chunks_offset, comp);
+        }
+
+        private class SimpleProgress<T>(Action<T> action) : IProgress<T>
+        {
+            public void Report(T value)
+            {
+                action(value);
+            }
         }
 
     }
+
 }

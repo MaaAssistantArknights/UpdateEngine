@@ -2,7 +2,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace MaaUpdateEngine;
 
-internal class LocalRandomAccessFile : IRandomAccessFile, IDisposable
+public class LocalRandomAccessFile : AbstractRandomAccessFile, IDisposable
 {
     public FileStream FileStream { get; }
     private SafeFileHandle fd;
@@ -17,9 +17,9 @@ internal class LocalRandomAccessFile : IRandomAccessFile, IDisposable
         this.leaveOpen = leaveOpen;
     }
 
-    public int ReadAt(long offset, Span<byte> buffer) => RandomAccess.Read(fd, buffer, offset);
+    public override int ReadAt(long offset, Span<byte> buffer) => RandomAccess.Read(fd, buffer, offset);
 
-    public ValueTask<int> ReadAtAsync(long offset, Memory<byte> buffer, CancellationToken ct) => RandomAccess.ReadAsync(fd, buffer, offset, ct);
+    public override ValueTask<int> ReadAtAsync(long offset, Memory<byte> buffer, IProgress<long>? progress, CancellationToken ct) => RandomAccess.ReadAsync(fd, buffer, offset, ct);
 
     public void Dispose()
     {

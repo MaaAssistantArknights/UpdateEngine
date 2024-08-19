@@ -27,6 +27,7 @@ namespace MaaUpdateEngine.SmokeTest
             var pkgdir = Path.GetFullPath(args[2]);
 
             var updpkg_name = args[3];
+            var progress_lock = new object();
 
             AccountingRandomAccessFile? f2 = null;
             UpdatePackage updpkg;
@@ -51,14 +52,52 @@ namespace MaaUpdateEngine.SmokeTest
                     throw new Exception("invalid update package name");
                 }
                 f2 = new AccountingRandomAccessFile(f);
-                updpkg = await UpdatePackage.CacheAndOpenAsync(f2, manifest, Path.Combine(workdir, "package_cache"), default);
+                UpdatePackage.TransferProgress old_progress = default;
+                var fetch_progress = new SyncProgress<UpdatePackage.TransferProgress>(x =>
+                {
+                    if (x == old_progress)
+                    {
+                        return;
+                    }
+                    old_progress = x;
+                    Console.Write($"\rprogress: {x.BytesTransferred} / {x.TotalBytes} bytes transferred");
+                    if (x.BytesTransferred == x.TotalBytes)
+                    {
+                        Console.WriteLine();
+                    }
+                });
+                updpkg = await UpdatePackage.CacheAndOpenAsync(f2, manifest, Path.Combine(workdir, "package_cache"), fetch_progress, CancellationToken.None);
             }
+
+            var old_add_progress = default(UpdateSession.AddPackageProgress);
+            var add_progress = new SyncProgress<UpdateSession.AddPackageProgress>(x =>
+            {
+                if (x == old_add_progress)
+                {
+                    return;
+                }
+                old_add_progress = x;
+                Console.WriteLine($"add package: [{(float)x.BytesConsumed/x.BytesToConsume:###%} {x.BytesConsumed}/{x.BytesToConsume}] {x.CurrentFile}");
+                if (x.BytesConsumed == x.BytesToConsume && x.CurrentFile == null)
+                {
+                    Console.WriteLine();
+                }
+            });
+
+            var commit_progress = new SyncProgress<UpdateSession.CommitProgress>(x =>
+            {
+                Console.WriteLine($"commit: [{x.NumberOfFilesUpdated}/{x.NumberOfFilesToUpdate}] {x.CurrentFile}");
+                if (x.NumberOfFilesToUpdate == x.NumberOfFilesUpdated && x.CurrentFile == null)
+                {
+                    Console.WriteLine();
+                }
+            });
 
             using (updpkg)
             {
                 using var session = new UpdateSession(manifest, pkgdir, workdir);
-                session.AddPackage(updpkg);
-                session.Commit();
+                session.AddPackage(updpkg, add_progress);
+                session.Commit(commit_progress);
             }
 
             if (f2 != null)
@@ -66,5 +105,15 @@ namespace MaaUpdateEngine.SmokeTest
                 Console.WriteLine($"remote file: {f2.IoCount} I/O requests, {f2.BytesTransferred} bytes transferred");
             }
         }
+
+        private class SyncProgress<T>(Action<T> action) : IProgress<T>
+        {
+            public void Report(T value)
+            {
+                action(value);
+            }
+        }
     }
+
+
 }

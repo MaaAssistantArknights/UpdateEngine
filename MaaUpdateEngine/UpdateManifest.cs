@@ -2,35 +2,37 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace MaaUpdateEngine
 {
     public class PackageManifest
     {
-        public string Name { get; set; }
-        public string Version { get; set; }
-        public string? Variant { get; set; }
+        [NotNull, JsonRequired] public string Name { get; set; }
+        [NotNull, JsonRequired] public string Version { get; set; }
+        [MaybeNull] public string Variant { get; set; }
     }
 
     internal class DeltaPackageManifest
     {
-        public string[] ForVersion { get; set; }
-        public Chunk[] Chunks { get; set; }
+        [NotNull, JsonRequired] public string[] ForVersion { get; set; }
+        [NotNull, JsonRequired] public Chunk[] Chunks { get; set; }
     }
 
     internal class Chunk
     {
-        public JsonElement Target { get; set; }
-        public long Offset { get; set; }
-        public long Size { get; set; }
-        public string Hash { get; set; }
+        [NotNull, JsonRequired] public JsonElement Target { get; set; }
+        [JsonRequired] public long Offset { get; set; }
+        [JsonRequired] public long Size { get; set; }
+        [NotNull, JsonRequired] public string Hash { get; set; }
 
-        public string[] GetTargetVersions()
+        [return: NotNull] public string[] GetTargetVersions()
         {
             if (Target.ValueKind != JsonValueKind.Array)
             {
@@ -42,22 +44,29 @@ namespace MaaUpdateEngine
 
     internal class PatchFile
     {
-        public string File { get; set; }
-        public string Patch { get; set; }
-        public long OldSize { get; set; }
-        public string OldHash { get; set; }
-        public long NewSize { get; set; }
-        public string NewHash { get; set; }
-        public string NewVersion { get; set; }
-        public string PatchType { get; set; }
+        [NotNull, JsonRequired] public string File { get; set; }
+        [NotNull, JsonRequired] public string Patch { get; set; }
+        [JsonRequired] public long OldSize { get; set; }
+        [NotNull, JsonRequired] public string OldHash { get; set; }
+        [JsonRequired] public long NewSize { get; set; }
+        [NotNull, JsonRequired] public string NewHash { get; set; }
+        [NotNull, JsonRequired] public string NewVersion { get; set; }
+        [NotNull, JsonRequired] public string PatchType { get; set; }
     }
 
     internal class ChunkManifest
     {
-        public string PatchBase { get; set; }
-        public string[] Base { get; set; }
-        public string[]? RemoveFiles { get; set; }
-        public PatchFile[]? PatchFiles { get; set; }
+        [NotNull, JsonRequired] public string PatchBase { get; set; }
+        [NotNull, JsonRequired] public string[] Base { get; set; }
+        [MaybeNull] public string[] RemoveFiles { get; set; }
+        [MaybeNull] public PatchFile[] PatchFiles { get; set; }
     }
 
+    [JsonSourceGenerationOptions(WriteIndented = false, PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
+    [JsonSerializable(typeof(PackageManifest))]
+    [JsonSerializable(typeof(DeltaPackageManifest))]
+    [JsonSerializable(typeof(ChunkManifest))]
+    internal partial class SourceGenerationContext : JsonSerializerContext
+    {
+    }
 }

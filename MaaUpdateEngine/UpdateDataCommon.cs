@@ -16,6 +16,7 @@ internal static class UpdateDataCommon
     private static readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        TypeInfoResolver = SourceGenerationContext.Default
     };
 
     public static Stream OpenDecompressionStream(PackageCompressionType compressionType, Stream stream)

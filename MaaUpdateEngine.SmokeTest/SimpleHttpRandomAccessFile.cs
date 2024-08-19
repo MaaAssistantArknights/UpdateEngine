@@ -6,7 +6,7 @@ using ZstdSharp.Unsafe;
 
 namespace MaaUpdateEngine
 {
-    internal class SimpleHttpRandomAccessFile : IRandomAccessFile
+    internal class SimpleHttpRandomAccessFile : AbstractRandomAccessFile
     {
         const int PageSize = 65536;
 
@@ -54,7 +54,7 @@ namespace MaaUpdateEngine
             return OpenAsync(new Uri(url));
         }
 
-        public int ReadAt(long offset, Span<byte> buffer)
+        public override int ReadAt(long offset, Span<byte> buffer)
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(offset, offset + buffer.Length - 1);
@@ -64,7 +64,7 @@ namespace MaaUpdateEngine
             return s.Read(buffer);
         }
 
-        public async ValueTask<int> ReadAtAsync(long offset, Memory<byte> buffer, CancellationToken ct)
+        public override async ValueTask<int> ReadAtAsync(long offset, Memory<byte> buffer, IProgress<long>? progress, CancellationToken ct)
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(offset, offset + buffer.Length - 1);
@@ -74,14 +74,26 @@ namespace MaaUpdateEngine
             return await s.ReadAsync(buffer, ct);
         }
 
-        async Task IRandomAccessFile.CopyToAsync(long offset, long length, Stream destination, CancellationToken ct)
+        public override async Task CopyToAsync(long offset, long length, Stream destination, IProgress<long>? progress, CancellationToken ct)
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(offset, offset + length - 1);
+            long xferd = 0;
+            progress?.Report(xferd);
             using var resp = await client.SendAsync(req, ct);
             resp.EnsureSuccessStatusCode();
             using var s = await resp.Content.ReadAsStreamAsync(ct);
-            await s.CopyToAsync(destination, ct);
+            var buffer = ArrayPool<byte>.Shared.Rent(81920);
+            while (!ct.IsCancellationRequested) {
+                var len = await s.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, length)), ct);
+                if (len == 0) {
+                    break;
+                }
+                await destination.WriteAsync(buffer.AsMemory(0, len), ct);
+                xferd += len;
+                progress?.Report(xferd);
+            }
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 }

@@ -1,6 +1,8 @@
 using Microsoft.Win32.SafeHandles;
 
-class RandomAccessSubStream : Stream
+namespace MaaUpdateEngine.Streams;
+
+internal class RandomAccessSubStream : Stream
 {
     private SafeFileHandle _fd;
     private long _fd_offset;
