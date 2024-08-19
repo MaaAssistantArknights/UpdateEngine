@@ -21,11 +21,13 @@ from . import iohelper
 from . import pkgprov
 from . import concurrent_cache
 from . import dataproc
+from .patch_cache import PatchCache
 
 from .model import AddFile, FileActionRecord, PatchFile, RemoveFile, ReplaceFile
 
 assert sys.version_info >= (3, 11)  # for ZipFile(metadata_encoding)
 
+cache_dir = 'cache'
 patch_cache_dir = 'cache/patch_cache'
 temp_extract_dir = 'cache/pkg_extract'
 chunk_temp_dir = 'output/temp'
@@ -49,7 +51,7 @@ class CachedBinaryPatch:
     patch_file: PatchFile
     to_version: str
     type: manifest.PatchType
-    cached_deltafile: os.PathLike
+    cached_deltafile: os.PathLike | None
     estimated_compressed_size: int
 
 
@@ -173,11 +175,12 @@ def make_patch_bsdiff(patchfile: PatchFile, oldent: pkgprov.PackageEntry, newent
 #     return results
 
 
-def find_best_patch(pkgs: dict[str, pkgprov.Package], delta_records: list[PackageContentDiff], latest_version, sorted_previous_versions: list[str]) -> dict[PatchFile, CachedBinaryPatch]:
+def find_best_patch(patch_cache: PatchCache, pkgs: dict[str, pkgprov.Package], delta_records: list[PackageContentDiff], latest_version, sorted_previous_versions: list[str]) -> dict[PatchFile, CachedBinaryPatch]:
     each_patch: defaultdict[PatchFile, list[CachedBinaryPatch]] = defaultdict(list)
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count())
     completed_jobs = 0
+    future_count = 0
 
     single_futures: list[concurrent.futures.Future[CachedBinaryPatch]] = []
     batch_futures: list[concurrent.futures.Future[list[CachedBinaryPatch]]] = []
@@ -188,10 +191,12 @@ def find_best_patch(pkgs: dict[str, pkgprov.Package], delta_records: list[Packag
         report_progress()
 
     def report_progress():
-        sys.stderr.write(f"\rfind_best_patch: {completed_jobs}/{len(single_futures)+len(batch_futures)}")
+        sys.stderr.write(f"\rfind_best_patch: {completed_jobs}/{future_count}")
         sys.stderr.flush()
     
     def as_future(callable, *args, **kwargs):
+        nonlocal future_count
+        future_count += 1
         future = executor.submit(callable, *args, **kwargs)
         future.add_done_callback(future_callback)
         return future
@@ -268,13 +273,26 @@ def find_best_patch(pkgs: dict[str, pkgprov.Package], delta_records: list[Packag
                 target_file_dedup_key = target_file_info
                 orig_file = concurrent_extract_file(pkgs[patch_file.from_version], patch_file.path)
                 new_file = concurrent_extract_file(pkgs[version], patch_file.path)
-                single_futures.append(as_future(make_patch_zstd, patch_file, source_file_dedup_key, target_file_dedup_key, version, orig_file, new_file))
-                single_futures.append(as_future(make_patch_bsdiff, patch_file, source_file_dedup_key, target_file_dedup_key, version, orig_file, new_file))
+                old_sha256 = lru_cached_sha256_file(orig_file)
+                new_sha256 = lru_cached_sha256_file(new_file)
+                if (size := patch_cache.query(old_sha256, new_sha256, "zstd")) is not None:
+                    each_patch[patch_file].append(CachedBinaryPatch(patch_file, version, "zstd", None, size))
+                else:
+                    single_futures.append(as_future(make_patch_zstd, patch_file, source_file_dedup_key, target_file_dedup_key, version, orig_file, new_file))
+                if (size := patch_cache.query(old_sha256, new_sha256, "bsdiff")) is not None:
+                    each_patch[patch_file].append(CachedBinaryPatch(patch_file, version, "bsdiff", None, size))
+                else:
+                    single_futures.append(as_future(make_patch_bsdiff, patch_file, source_file_dedup_key, target_file_dedup_key, version, orig_file, new_file))
 
     report_progress()
 
     def process_future_result(result: CachedBinaryPatch):
         each_patch[result.patch_file].append(result)
+        oldfile = concurrent_extract_file(pkgs[result.patch_file.from_version], result.patch_file.path)
+        newfile = concurrent_extract_file(pkgs[result.to_version], result.patch_file.path)
+        old_sha256 = lru_cached_sha256_file(oldfile)
+        new_sha256 = lru_cached_sha256_file(newfile)
+        patch_cache.add_patch(old_sha256, new_sha256, result.type, result.estimated_compressed_size)
 
     try:
         for future in single_futures:
@@ -290,13 +308,39 @@ def find_best_patch(pkgs: dict[str, pkgprov.Package], delta_records: list[Packag
         executor.shutdown(wait=False, cancel_futures=True)
         raise
 
-    executor.shutdown(wait=True)
 
     report_progress()
 
     sys.stderr.write("\n")
 
     resolved_patch ={k: min(vs, key=lambda x: x.estimated_compressed_size) for k, vs in each_patch.items()}
+
+    def deferred_patch_creation(entry: CachedBinaryPatch):
+        if entry.cached_deltafile is None:
+            oldent = pkgs[entry.patch_file.from_version].get_entry(entry.patch_file.path)
+            newent = pkgs[entry.to_version].get_entry(entry.patch_file.path)
+            oldfile = concurrent_extract_file(pkgs[entry.patch_file.from_version], entry.patch_file.path)
+            newfile = concurrent_extract_file(pkgs[entry.to_version], entry.patch_file.path)
+            if entry.type == "zstd":
+                result = make_patch_zstd(entry.patch_file, oldent, newent, entry.to_version, oldfile, newfile)
+            elif entry.type == "bsdiff":
+                result = make_patch_bsdiff(entry.patch_file, oldent, newent, entry.to_version, oldfile, newfile)
+            elif entry.type == "copy":
+                result = None
+            else:
+                raise ValueError("Unknown patch type")
+            entry.cached_deltafile = result.cached_deltafile
+
+    deferred_futures = []
+    for item in resolved_patch.values():
+        if item.cached_deltafile is None and item.type != "copy":
+            deferred_futures.append(as_future(deferred_patch_creation, item))
+    
+    for future in deferred_futures:
+        # collect exceptions
+        future.result()
+    
+    executor.shutdown(wait=True)
     return resolved_patch
 
 
@@ -452,7 +496,12 @@ def main(package_provider: pkgprov.PackageProvider, package_name: str, package_v
     delta_records = file_history.version_changes
     unchanged_names = file_history.unchanged_entries
 
-    patch_strategy = find_best_patch(pkgs, delta_records, latest, previous)
+    patch_cache_db = patch_cache_dir + '.db'
+    patch_cache = PatchCache(patch_cache_db)
+
+    patch_strategy = find_best_patch(patch_cache, pkgs, delta_records, latest, previous)
+
+    patch_cache.close()
 
     for delta_record in delta_records:
         report(f"To update from version {delta_record.base_version}")
