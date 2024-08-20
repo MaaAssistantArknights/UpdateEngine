@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json.Nodes;
 using MaaUpdateEngine;
 
 namespace MaaUpdateEngine.SmokeTest
@@ -17,13 +17,15 @@ namespace MaaUpdateEngine.SmokeTest
             var workdir = Path.GetFullPath(args[0]);
             Directory.CreateDirectory(workdir);
 
-            var manifest = JsonSerializer.Deserialize<PackageManifest>(
-                File.ReadAllBytes(args[1]),
-                new JsonSerializerOptions()
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-                })
-                ?? throw new Exception("invalid manifest");
+            var manifest_doc = JsonNode.Parse(File.ReadAllBytes(args[1])) ?? throw new Exception("invalid manifest");
+
+            var manifest = new PackageManifest
+            {
+                Name = manifest_doc["name"]?.GetValue<string>() ?? throw new Exception("missing name"),
+                Version = manifest_doc["version"]?.GetValue<string>() ?? throw new Exception("missing version"),
+                Variant = manifest_doc["variant"]?.GetValue<string>()
+            };
+
             var pkgdir = Path.GetFullPath(args[2]);
 
             var updpkg_name = args[3];

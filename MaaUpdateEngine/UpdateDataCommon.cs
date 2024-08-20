@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace MaaUpdateEngine;
 
@@ -61,6 +62,10 @@ internal static class UpdateDataCommon
         {
             throw new InvalidDataException("Invalid manifest chunk");
         }
-        return JsonSerializer.Deserialize<T>(stream, jsonOptions);
+        if (SourceGenerationContext.Default.GetTypeInfo(typeof(T)) is not JsonTypeInfo<T> typeinfo)
+        {
+            throw new InvalidOperationException("Type not serializable");
+        }
+        return JsonSerializer.Deserialize(stream, typeinfo);
     }
 }

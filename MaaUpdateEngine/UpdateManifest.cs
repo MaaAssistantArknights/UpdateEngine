@@ -32,7 +32,8 @@ namespace MaaUpdateEngine
         [JsonRequired] public long Size { get; set; }
         [NotNull, JsonRequired] public string Hash { get; set; }
 
-        [return: NotNull] public string[] GetTargetVersions()
+        [return: NotNull]
+        public string[] GetTargetVersions()
         {
             if (Target.ValueKind != JsonValueKind.Array)
             {
