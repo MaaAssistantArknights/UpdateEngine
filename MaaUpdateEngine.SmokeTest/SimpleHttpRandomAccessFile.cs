@@ -8,8 +8,6 @@ namespace MaaUpdateEngine
 {
     internal class SimpleHttpRandomAccessFile : AbstractRandomAccessFile
     {
-        const int PageSize = 65536;
-
         private HttpClient client;
         private Uri url;
         public long Length => contentLength;
@@ -84,9 +82,11 @@ namespace MaaUpdateEngine
             resp.EnsureSuccessStatusCode();
             using var s = await resp.Content.ReadAsStreamAsync(ct);
             var buffer = ArrayPool<byte>.Shared.Rent(81920);
-            while (!ct.IsCancellationRequested) {
+            while (!ct.IsCancellationRequested)
+            {
                 var len = await s.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, length)), ct);
-                if (len == 0) {
+                if (len == 0)
+                {
                     break;
                 }
                 await destination.WriteAsync(buffer.AsMemory(0, len), ct);

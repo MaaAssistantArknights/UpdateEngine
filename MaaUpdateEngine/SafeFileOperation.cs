@@ -13,7 +13,7 @@ internal static class SafeFileOperation
 
     private static ISafeFileOperation GetImplementation()
     {
-       return SafeFileOperationWin32.IsSupported ? new SafeFileOperationWin32() : new SafeFileOperationDefault();
+        return SafeFileOperationWin32.IsSupported ? new SafeFileOperationWin32() : new SafeFileOperationDefault();
     }
 
     public static void Rename(string source, string destination)
