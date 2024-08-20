@@ -9,7 +9,13 @@ namespace MaaUpdateEngine
     using static UpdateDataCommon;
     public class UpdateSession : IDisposable
     {
-        public record class AddPackageProgress(long BytesToConsume, long BytesConsumed, string? CurrentFile);
+        /// <summary>
+        /// Base class of progress report for adding package. Check the actual type to get progress details: <see cref="ConsumedBytesProgress"/>, <see cref="FileProgress"/>
+        /// </summary>
+        public abstract record class AddPackageProgress();
+        public record class ConsumedBytesProgress(long BytesToConsume, long BytesConsumed) : AddPackageProgress;
+        public record class FileProgress(string CurrentFile) : AddPackageProgress;
+
         public record class CommitProgress(long NumberOfFilesToUpdate, long NumberOfFilesUpdated, string? CurrentFile);
         private record struct PatchRecord(string FromVersion, PatchFile PatchFile);
 
@@ -59,7 +65,29 @@ namespace MaaUpdateEngine
             var apply_chunks = updatePackage.PackageIndex.Chunks.Where(c => c.GetTargetVersions().Contains(currentPackageInfo.Version)).ToArray();
             var total_bytes = apply_chunks.Sum(c => c.Size);
 
-            progress?.Report(new(total_bytes, bytes_consumed, null));
+
+            ConsumedBytesProgress? last_bytes_progress = null;
+            void ReportBytes(long bytesTotal, long bytesConsumed)
+            {
+                var new_progress = new ConsumedBytesProgress(bytesTotal, bytesConsumed);
+                if (last_bytes_progress != new_progress)
+                {
+                    last_bytes_progress = new_progress;
+                    progress?.Report(new_progress);
+                }
+            }
+
+            string? last_file = null;
+            void ReportFile(string file)
+            {
+                if (last_file != file)
+                {
+                    last_file = file;
+                    progress?.Report(new FileProgress(file));
+                }
+            }
+
+            ReportBytes(total_bytes, bytes_consumed);
 
             var patch_files = new Dictionary<string, List<PatchRecord>>();
             var interested_patch_data = new Dictionary<string, byte[]>();
@@ -89,10 +117,10 @@ namespace MaaUpdateEngine
                 {
                     throw new InvalidDataException("Invalid chunk manifest");
                 }
-                progress?.Report(new(total_bytes, bytes_consumed + chunk_stream.Position, null));
+                ReportBytes(total_bytes, bytes_consumed + chunk_stream.Position);
 
                 var chunk_manifest = DeserializeFromEntry<ChunkManifest>(chunk_manifest_entry) ?? throw new InvalidDataException("Invalid chunk manifest");
-                progress?.Report(new(total_bytes, bytes_consumed + chunk_stream.Position, null));
+                ReportBytes(total_bytes, bytes_consumed + chunk_stream.Position);
 
                 // process removed files
                 foreach (var rf in chunk_manifest.RemoveFiles ?? [])
@@ -129,7 +157,7 @@ namespace MaaUpdateEngine
                     try
                     {
                         var entry = reader.GetNextEntry();
-                        progress?.Report(new(total_bytes, bytes_consumed + chunk_stream.Position, null));
+                        ReportBytes(total_bytes, bytes_consumed + chunk_stream.Position);
                         return entry;
                     }
                     catch (EndOfStreamException)
@@ -146,6 +174,7 @@ namespace MaaUpdateEngine
                     // skip extracting patch files
                     if (interested_patch_data.ContainsKey(file_entry.Name))
                     {
+                        ReportFile(file_entry.Name);
                         var patchdata = new byte[file_entry.Length];
                         var ds = file_entry.DataStream ?? throw new InvalidDataException("Invalid patch data");
                         ds.ReadExactly(patchdata);
@@ -157,15 +186,15 @@ namespace MaaUpdateEngine
                     {
                         continue;
                     }
-
                     if (file_entry.EntryType == TarEntryType.RegularFile)
                     {
                         var file_path = file_entry.Name;
                         var tmpfile = GetTempFileName();
+                        ReportFile(file_path);
                         file_entry.ExtractToFile(tmpfile, true);
                         updatedFileMapping[file_path] = tmpfile;
                     }
-                    progress?.Report(new(total_bytes, bytes_consumed + chunk_stream.Position, null));
+                    ReportBytes(total_bytes, bytes_consumed + chunk_stream.Position);
                 }
 
                 bytes_consumed += chunk_meta.Size;
@@ -174,7 +203,8 @@ namespace MaaUpdateEngine
             // apply patch series
             foreach (var (file_to_patch, patch_series) in patch_files)
             {
-                progress?.Report(new(total_bytes, bytes_consumed, file_to_patch));
+                ReportBytes(total_bytes, bytes_consumed);
+                ReportFile(file_to_patch);
                 if (patch_series[^1].PatchFile.NewVersion != updatePackage.Manifest.Version)
                 {
                     throw new InvalidDataException($"Invalid patch series: file {file_to_patch} is not patched to the target version");
@@ -250,7 +280,7 @@ namespace MaaUpdateEngine
                             SafeFileOperation.Unlink(old_input_file);
                         }
                         bytes_consumed += patch_data.Length;
-                        progress?.Report(new(total_bytes, bytes_consumed, file_to_patch));
+                        ReportBytes(total_bytes, bytes_consumed);
                     }
 
                     if (patched_file == null)

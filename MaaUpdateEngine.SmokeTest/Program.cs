@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using MaaUpdateEngine;
 
 namespace MaaUpdateEngine.SmokeTest
@@ -71,18 +71,15 @@ namespace MaaUpdateEngine.SmokeTest
                 updpkg = await UpdatePackage.CacheAndOpenAsync(f2, manifest, Path.Combine(workdir, "package_cache"), fetch_progress, CancellationToken.None);
             }
 
-            var old_add_progress = default(UpdateSession.AddPackageProgress);
             var add_progress = new SyncProgress<UpdateSession.AddPackageProgress>(x =>
             {
-                if (x == old_add_progress)
+                if (x is UpdateSession.ConsumedBytesProgress bytes)
                 {
-                    return;
+                    Console.WriteLine($"add package: ({(float)bytes.BytesConsumed / bytes.BytesToConsume,4:0%}) {bytes.BytesConsumed}/{bytes.BytesToConsume}");
                 }
-                old_add_progress = x;
-                Console.WriteLine($"add package: [{(float)x.BytesConsumed/x.BytesToConsume:###%} {x.BytesConsumed}/{x.BytesToConsume}] {x.CurrentFile}");
-                if (x.BytesConsumed == x.BytesToConsume && x.CurrentFile == null)
+                else if (x is UpdateSession.FileProgress file)
                 {
-                    Console.WriteLine();
+                    Console.WriteLine($"add package: {file.CurrentFile}");
                 }
             });
 
