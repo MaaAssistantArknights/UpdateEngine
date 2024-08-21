@@ -647,7 +647,7 @@ def main(package_provider: pkgprov.PackageProvider, package_name: str, package_v
     amal.add_chunk("patch_fallback", compressed_patch_fallback_chunk)
     amal.add_chunk("fallback", compressed_unchanged_chunk)
 
-    amal.build(os.path.join(outdir, f'{package_name}-{latest}{'-' + package_variant if package_variant else ''}-delta.tar.zst'))
+    amal.build(os.path.join(outdir, f"{package_name}-{latest}{'-' + package_variant if package_variant else ''}-delta.tar.zst"))
 
     
 
