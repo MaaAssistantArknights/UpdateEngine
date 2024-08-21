@@ -1,0 +1,31 @@
+name: Smoke test
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        show-progress: false
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+    - name: Restore dependencies
+      run: dotnet restore
+    - name: Prepare test data
+      run: aria2c -i testdata.aria2
+    - name: Run makedelta
+      run: python -m makedelta version_list_all.txt version_list_nonlinear.txt
+    - name: Smoke test
+      run: sh smoke_test.sh
